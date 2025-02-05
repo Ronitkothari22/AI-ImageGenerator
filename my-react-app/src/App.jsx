@@ -11,10 +11,14 @@ import ResultSection from "./components/ResultSection"
 function App() {
   const [isRegistered, setIsRegistered] = useState(false)
   const [generatedImage, setGeneratedImage] = useState("")
-  const registrationRef = useRef(null)
 
-  const scrollToRegistration = () => {
-    registrationRef.current?.scrollIntoView({ block: "start" })
+  const handleJoinClick = () => {
+    window.location.href = '#registration'
+  }
+
+  const handleRegistrationSuccess = () => {
+    setIsRegistered(true)
+    window.location.href = '#image-generation'
   }
 
   return (
@@ -25,12 +29,14 @@ function App() {
       className="min-h-screen bg-gradient-to-b from-black to-purple-900 text-white"
     >
       <Header />
-      <HeroSection onJoinClick={scrollToRegistration} />
-      <div ref={registrationRef}>
-        <RegistrationForm setIsRegistered={setIsRegistered} />
+      <HeroSection onJoinClick={handleJoinClick} />
+      <div id="registration">
+        <RegistrationForm setIsRegistered={handleRegistrationSuccess} />
       </div>
       {isRegistered && (
-        <ImageGenerationSection setGeneratedImage={setGeneratedImage} hasGeneratedImage={!!generatedImage} />
+        <div id="image-generation">
+          <ImageGenerationSection setGeneratedImage={setGeneratedImage} hasGeneratedImage={!!generatedImage} />
+        </div>
       )}
       {generatedImage && <ResultSection imageUrl={generatedImage} />}
       <ToastContainer position="bottom-right" theme="dark" />

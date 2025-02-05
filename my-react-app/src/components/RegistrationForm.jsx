@@ -7,17 +7,31 @@ const RegistrationForm = ({ setIsRegistered }) => {
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [stallNo, setStallNo] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    setIsSubmitting(true)
+    
     try {
-      const response = await axios.post("/register", { name, email, stallNo })
+      const response = await axios.post("http://localhost:8000/api/register", {
+        name,
+        email,
+        stallNo
+      })
+
       if (response.data.success) {
-        setIsRegistered(true)
         toast.success("Registration successful!")
+        // Small delay before redirecting to ensure toast is visible
+        setTimeout(() => {
+          setIsRegistered(true)
+        }, 1500)
       }
     } catch (error) {
-      toast.error("Registration failed. Please try again.")
+      console.error("Registration error:", error)
+      toast.error(error.response?.data?.detail || "Registration failed. Please try again.")
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -42,6 +56,7 @@ const RegistrationForm = ({ setIsRegistered }) => {
               onChange={(e) => setName(e.target.value)}
               className="w-full px-3 py-2 bg-gray-800 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
               required
+              disabled={isSubmitting}
             />
           </div>
           <div className="mb-4">
@@ -55,6 +70,7 @@ const RegistrationForm = ({ setIsRegistered }) => {
               onChange={(e) => setStallNo(e.target.value)}
               className="w-full px-3 py-2 bg-gray-800 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
               required
+              disabled={isSubmitting}
             />
           </div>
           <div className="mb-6">
@@ -68,6 +84,7 @@ const RegistrationForm = ({ setIsRegistered }) => {
               onChange={(e) => setEmail(e.target.value)}
               className="w-full px-3 py-2 bg-gray-800 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
               required
+              disabled={isSubmitting}
             />
           </div>
           <motion.button
@@ -75,8 +92,16 @@ const RegistrationForm = ({ setIsRegistered }) => {
             whileTap={{ scale: 0.95 }}
             type="submit"
             className="w-full py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold rounded-md shadow-md hover:shadow-lg transition-all duration-300"
+            disabled={isSubmitting}
           >
-            Register
+            {isSubmitting ? (
+              <div className="flex items-center justify-center">
+                <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-white mr-2"></div>
+                Registering...
+              </div>
+            ) : (
+              "Register"
+            )}
           </motion.button>
         </form>
       </div>
