@@ -7,6 +7,10 @@ RUN pip install -r requirements.txt
 
 COPY . .
 
+# Add these lines to fix permissions
+RUN chmod -R 755 /app
+USER root
+
 # Expose the port
 EXPOSE 10000
 
