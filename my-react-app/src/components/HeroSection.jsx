@@ -26,7 +26,7 @@ const HeroSection = ({ onJoinClick }) => {
           initial={{ scale: 0, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ duration: 1 }}
-          src="src/assets/logo white.png"
+          src="public/logo white.png"
           alt="AI Generator Logo"
           className="w-32 h-32 md:w-48 md:h-48 mb-6"
         />
