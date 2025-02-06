@@ -11,6 +11,7 @@ import ResultSection from "./components/ResultSection"
 function App() {
   const [isRegistered, setIsRegistered] = useState(false)
   const [generatedImage, setGeneratedImage] = useState("")
+  const [prompt, setPrompt] = useState("")
 
   const handleJoinClick = () => {
     window.location.href = '#registration'
@@ -30,15 +31,23 @@ function App() {
     >
       <Header />
       <HeroSection onJoinClick={handleJoinClick} />
-      <div id="registration">
-        <RegistrationForm setIsRegistered={handleRegistrationSuccess} />
-      </div>
-      {isRegistered && (
-        <div id="image-generation">
-          <ImageGenerationSection setGeneratedImage={setGeneratedImage} hasGeneratedImage={!!generatedImage} />
+      {!isRegistered && (
+        <div id="registration">
+          <RegistrationForm setIsRegistered={handleRegistrationSuccess} />
         </div>
       )}
-      {generatedImage && <ResultSection imageUrl={generatedImage} />}
+      {isRegistered && (
+        <>
+          <div id="image-generation">
+            <ImageGenerationSection 
+              setGeneratedImage={setGeneratedImage} 
+              setPrompt={setPrompt}
+              hasGeneratedImage={!!generatedImage} 
+            />
+          </div>
+          {generatedImage && <ResultSection imageUrl={generatedImage} />}
+        </>
+      )}
       <ToastContainer position="bottom-right" theme="dark" />
     </motion.div>
   )

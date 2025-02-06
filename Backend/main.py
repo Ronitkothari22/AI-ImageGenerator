@@ -1,5 +1,4 @@
 from fastapi import FastAPI, HTTPException
-
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from datetime import datetime
@@ -9,8 +8,15 @@ from googleapiclient.http import MediaIoBaseUpload
 import io
 import pandas as pd
 import os
+import openai
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI()
+
+# Configure OpenAI
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # Configure CORS
 app.add_middleware(
@@ -38,6 +44,9 @@ class RegistrationData(BaseModel):
     email: str
     stallNo: str
 
+class ImagePrompt(BaseModel):
+    prompt: str
+
 @app.post("/api/register")
 async def register_user(data: RegistrationData):
     try:
@@ -61,7 +70,6 @@ async def register_user(data: RegistrationData):
             if response['files']:
                 # File exists, update it
                 file_id = response['files'][0]['id']
-                print(f"Existing file ID: {file_id}")
                 
                 # Get existing content
                 request = drive_service.files().get_media(fileId=file_id)
@@ -86,28 +94,6 @@ async def register_user(data: RegistrationData):
                     media_body=media
                 ).execute()
 
-                # Ensure permission exists for the email
-                try:
-                    permission = drive_service.permissions().create(
-                        fileId=file_id,
-                        body={
-                            'type': 'user',
-                            'role': 'writer',
-                            'emailAddress': 'ronitkothari22@gmail.com',
-                            'sendNotificationEmail': True
-                        }
-                    ).execute()
-                    print(f"Permission added/updated: {permission}")
-                except Exception as perm_error:
-                    print(f"Permission error: {str(perm_error)}")
-
-                # Get and print the file's web link
-                file_data = drive_service.files().get(
-                    fileId=file_id,
-                    fields='webViewLink'
-                ).execute()
-                print(f"File can be viewed at: {file_data.get('webViewLink')}")
-
             else:
                 # Create new file
                 csv_buffer = io.StringIO()
@@ -127,23 +113,8 @@ async def register_user(data: RegistrationData):
                 file = drive_service.files().create(
                     body=file_metadata,
                     media_body=media,
-                    fields='id, webViewLink'
+                    fields='id'
                 ).execute()
-                
-                print(f"New file created with ID: {file['id']}")
-
-                # Add permission
-                permission = drive_service.permissions().create(
-                    fileId=file['id'],
-                    body={
-                        'type': 'user',
-                        'role': 'writer',
-                        'emailAddress': 'ronitkothari22@gmail.com',
-                        'sendNotificationEmail': True
-                    }
-                ).execute()
-                
-                print(f"File can be viewed at: {file.get('webViewLink')}")
 
         except Exception as drive_error:
             print(f"Drive operation error: {str(drive_error)}")
@@ -155,29 +126,55 @@ async def register_user(data: RegistrationData):
         print(f"Error during registration: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# Add a new endpoint to get the file link
-@app.get("/api/registration-file")
-async def get_registration_file():
+@app.post("/generate-image")
+async def generate_image(data: ImagePrompt):
     try:
+        response = openai.images.generate(
+            model="dall-e-3",
+            prompt=data.prompt,
+            size="1024x1024",
+            quality="standard",
+            n=1,
+        )
+        
+        image_url = response.data[0].url
+
+        # Update the registration in Google Drive with prompt and image URL
         file_name = 'registrations.csv'
         response = drive_service.files().list(
             q=f"name='{file_name}'",
             spaces='drive',
-            fields='files(id, webViewLink)'
+            fields='files(id, name)'
         ).execute()
 
         if response['files']:
             file_id = response['files'][0]['id']
-            file_data = drive_service.files().get(
-                fileId=file_id,
-                fields='webViewLink'
-            ).execute()
-            return {"fileUrl": file_data.get('webViewLink')}
-        else:
-            raise HTTPException(status_code=404, detail="File not found")
+            request = drive_service.files().get_media(fileId=file_id)
+            existing_content = request.execute()
+            df = pd.read_csv(io.StringIO(existing_content.decode('utf-8')))
+            
+            # Update the last row with prompt and image URL
+            if not df.empty:
+                df.loc[df.index[-1], 'Prompt'] = data.prompt
+                df.loc[df.index[-1], 'Generated_Image_URL'] = image_url
+                
+                # Save updated CSV
+                csv_buffer = io.StringIO()
+                df.to_csv(csv_buffer, index=False)
+                media = MediaIoBaseUpload(
+                    io.BytesIO(csv_buffer.getvalue().encode()),
+                    mimetype='text/csv',
+                    resumable=True
+                )
+                
+                drive_service.files().update(
+                    fileId=file_id,
+                    media_body=media
+                ).execute()
 
+        return {"success": True, "imageUrl": image_url}
     except Exception as e:
-        print(f"Error getting file link: {str(e)}")
+        print(f"Error generating image: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
