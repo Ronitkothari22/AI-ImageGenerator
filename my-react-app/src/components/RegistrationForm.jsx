@@ -132,7 +132,7 @@ const RegistrationForm = ({ setIsRegistered, onRegister }) => {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             type="submit"
-            className="w-full py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold rounded-md shadow-md hover:shadow-lg transition-all duration-300"
+            className="w-full py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold rounded-md shadow-md hover:shadow-lg transition-all duration-300 mb-4"
             disabled={isSubmitting}
           >
             {isSubmitting ? (
@@ -144,6 +144,11 @@ const RegistrationForm = ({ setIsRegistered, onRegister }) => {
               "Register"
             )}
           </motion.button>
+          
+          {/* Loading Note */}
+          <p className="text-sm text-gray-300 text-center italic">
+            Note: Registration may take a few seconds to complete. Please be patient.
+          </p>
         </form>
       </div>
     </motion.section>
