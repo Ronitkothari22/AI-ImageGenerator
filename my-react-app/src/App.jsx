@@ -7,13 +7,14 @@ import HeroSection from "./components/HeroSection"
 import RegistrationForm from "./components/RegistrationForm"
 import ImageGenerationSection from "./components/ImageGenerationSection"
 import ResultSection from "./components/ResultSection"
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 
 function App() {
   const [generatedImage, setGeneratedImage] = useState(null)
   const [prompt, setPrompt] = useState("")
   const [stallNo, setStallNo] = useState(localStorage.getItem("stallNo") || "")
   const [isRegistered, setIsRegistered] = useState(!!stallNo)
+  const [showRegistration, setShowRegistration] = useState(false)
 
   useEffect(() => {
     // Check for stored stallNo on component mount
@@ -25,12 +26,13 @@ function App() {
   }, [])
 
   const handleJoinClick = () => {
-    window.location.href = '#registration'
+    setShowRegistration(true)
   }
 
-  const handleRegistrationSuccess = () => {
+  const handleRegistrationSuccess = (newStallNo) => {
+    setStallNo(newStallNo)
     setIsRegistered(true)
-    window.location.href = '#image-generation'
+    setShowRegistration(false)
   }
 
   return (
@@ -45,7 +47,13 @@ function App() {
         <Routes>
           <Route path="/" element={
             <>
-              <HeroSection onJoinClick={() => navigate('/generate')} />
+              <HeroSection onJoinClick={handleJoinClick} />
+              {showRegistration && !isRegistered && (
+                <RegistrationForm 
+                  setIsRegistered={setIsRegistered}
+                  onRegister={handleRegistrationSuccess}
+                />
+              )}
               {isRegistered && (
                 <ImageGenerationSection
                   setGeneratedImage={setGeneratedImage}

@@ -55,7 +55,7 @@ const HeroSection = ({ onJoinClick }) => {
         <motion.button
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
-          onClick={onJoinClick}
+          onClick={() => onJoinClick()}
           className="px-8 py-3 mb-8 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold rounded-full shadow-lg hover:shadow-xl transition-all duration-300"
         >
           Join the Competition
