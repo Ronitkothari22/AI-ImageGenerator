@@ -20,10 +20,13 @@ openai.api_key = os.environ.get("OPENAI_API_KEY")
 stall_usage = defaultdict(int)
 GENERATION_LIMIT = 3
 
-# Configure CORS - update to use environment variable
+# Configure CORS - update to allow the Vercel frontend domain
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[os.environ.get("FRONTEND_URL", "http://localhost:5173")],
+    allow_origins=[
+        "https://ai-image-generator-ronitkotharis-projects.vercel.app",
+        "http://localhost:5173"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
