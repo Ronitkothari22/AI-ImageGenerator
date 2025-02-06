@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from datetime import datetime
@@ -10,6 +10,7 @@ import pandas as pd
 import os
 import openai
 from dotenv import load_dotenv
+from collections import defaultdict
 
 load_dotenv()
 
@@ -17,6 +18,10 @@ app = FastAPI()
 
 # Configure OpenAI
 openai.api_key = os.getenv("OPENAI_API_KEY")
+
+# Rate limiting storage - using stall number instead of IP
+stall_usage = defaultdict(int)
+GENERATION_LIMIT = 3
 
 # Configure CORS
 app.add_middleware(
@@ -46,6 +51,7 @@ class RegistrationData(BaseModel):
 
 class ImagePrompt(BaseModel):
     prompt: str
+    stallNo: str  # Added stall number to track generations
 
 @app.post("/api/register")
 async def register_user(data: RegistrationData):
@@ -128,6 +134,13 @@ async def register_user(data: RegistrationData):
 
 @app.post("/generate-image")
 async def generate_image(data: ImagePrompt):
+    # Check if stall has reached generation limit
+    if stall_usage[data.stallNo] >= GENERATION_LIMIT:
+        raise HTTPException(
+            status_code=429,
+            detail=f"This stall has reached the limit of {GENERATION_LIMIT} image generations for this competition."
+        )
+    
     try:
         response = openai.images.generate(
             model="dall-e-3",
@@ -138,6 +151,9 @@ async def generate_image(data: ImagePrompt):
         )
         
         image_url = response.data[0].url
+        
+        # Increment the usage counter for this stall
+        stall_usage[data.stallNo] += 1
 
         # Update the registration in Google Drive with prompt and image URL
         file_name = 'registrations.csv'
@@ -153,29 +169,50 @@ async def generate_image(data: ImagePrompt):
             existing_content = request.execute()
             df = pd.read_csv(io.StringIO(existing_content.decode('utf-8')))
             
-            # Update the last row with prompt and image URL
-            if not df.empty:
-                df.loc[df.index[-1], 'Prompt'] = data.prompt
-                df.loc[df.index[-1], 'Generated_Image_URL'] = image_url
-                
-                # Save updated CSV
-                csv_buffer = io.StringIO()
-                df.to_csv(csv_buffer, index=False)
-                media = MediaIoBaseUpload(
-                    io.BytesIO(csv_buffer.getvalue().encode()),
-                    mimetype='text/csv',
-                    resumable=True
-                )
-                
-                drive_service.files().update(
-                    fileId=file_id,
-                    media_body=media
-                ).execute()
+            # Add new row for this generation
+            new_row = pd.DataFrame([{
+                'Timestamp': datetime.now().isoformat(),
+                'Stall_No': data.stallNo,
+                'Prompt': data.prompt,
+                'Generated_Image_URL': image_url,
+                'Generation_Number': stall_usage[data.stallNo]
+            }])
+            
+            # Append the new row
+            updated_df = pd.concat([df, new_row], ignore_index=True)
+            
+            # Save updated CSV
+            csv_buffer = io.StringIO()
+            updated_df.to_csv(csv_buffer, index=False)
+            media = MediaIoBaseUpload(
+                io.BytesIO(csv_buffer.getvalue().encode()),
+                mimetype='text/csv',
+                resumable=True
+            )
+            
+            drive_service.files().update(
+                fileId=file_id,
+                media_body=media
+            ).execute()
 
-        return {"success": True, "imageUrl": image_url}
+        return {
+            "success": True, 
+            "imageUrl": image_url,
+            "remainingGenerations": GENERATION_LIMIT - stall_usage[data.stallNo]
+        }
     except Exception as e:
         print(f"Error generating image: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# Add an endpoint to check remaining generations for a stall
+@app.get("/check-generation-limit/{stall_no}")
+async def check_limit(stall_no: str):
+    remaining = max(0, GENERATION_LIMIT - stall_usage[stall_no])
+    return {
+        "remaining_generations": remaining,
+        "total_generations": GENERATION_LIMIT,
+        "used_generations": stall_usage[stall_no]
+    }
 
 if __name__ == "__main__":
     import uvicorn
