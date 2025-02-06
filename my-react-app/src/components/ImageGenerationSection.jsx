@@ -1,63 +1,98 @@
-import { useState, useEffect } from "react"
-import { motion } from "framer-motion"
-import axios from "axios"
-import { toast } from "react-toastify"
+import { useState, useEffect } from "react";
+import { motion } from "framer-motion";
+import axios from "axios";
+import { toast } from "react-toastify";
 
-const ImageGenerationSection = ({ setGeneratedImage, setPrompt, hasGeneratedImage, stallNo }) => {
-  const [promptText, setPromptText] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
-  const [remainingGenerations, setRemainingGenerations] = useState(3)
-  const [totalGenerations, setTotalGenerations] = useState(3)
-  const [usedGenerations, setUsedGenerations] = useState(0)
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000"
+
+const ImageGenerationSection = ({
+  setGeneratedImage,
+  setPrompt,
+  hasGeneratedImage,
+  stallNo,
+}) => {
+  const [promptText, setPromptText] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [remainingGenerations, setRemainingGenerations] = useState(3);
+  const [totalGenerations, setTotalGenerations] = useState(3);
+  const [usedGenerations, setUsedGenerations] = useState(0);
+
+  console.log("ImageGenerationSection props:", { stallNo, hasGeneratedImage });
 
   useEffect(() => {
+    console.log("stallNo changed:", stallNo);
     if (stallNo) {
-      checkRemainingGenerations()
+      checkRemainingGenerations();
     }
-  }, [stallNo])
+  }, [stallNo]);
 
   const checkRemainingGenerations = async () => {
     try {
-      const response = await axios.get(`http://localhost:8000/check-generation-limit/${stallNo}`)
-      setRemainingGenerations(response.data.remaining_generations)
-      setTotalGenerations(response.data.total_generations)
-      setUsedGenerations(response.data.used_generations)
+      const response = await axios.get(
+        `${API_URL}/check-generation-limit/${stallNo}`
+      );
+      setRemainingGenerations(response.data.remaining_generations);
+      setTotalGenerations(response.data.total_generations);
+      setUsedGenerations(response.data.used_generations);
     } catch (error) {
-      console.error("Error checking generation limit:", error)
+      console.error("Error checking generation limit:", error);
     }
-  }
+  };
 
   const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (remainingGenerations <= 0) {
-      toast.error(`This stall has reached the limit of ${totalGenerations} image generations for this competition.`)
-      return
+    e.preventDefault();
+    
+    console.log("Form submission details:", {
+      promptText: promptText,
+      promptTextTrimmed: promptText.trim(),
+      stallNo: stallNo,
+      stallNoTrimmed: stallNo?.trim(),
+      hasStallNo: Boolean(stallNo),
+      hasPrompt: Boolean(promptText)
+    });
+
+    if (!promptText.trim() || !stallNo) {
+      toast.error("Please enter a prompt and ensure stall number is set");
+      return;
     }
 
-    setIsLoading(true)
+    setIsLoading(true);
     try {
-      const response = await axios.post("http://localhost:8000/generate-image", { 
-        prompt: promptText,
-        stallNo: stallNo
-      })
+      const response = await axios.post(
+        `${API_URL}/generate-image`,
+        {
+          prompt: promptText.trim(),
+          stallNo: stallNo.trim()
+        }
+      );
+      
       if (response.data.success) {
-        setGeneratedImage(response.data.imageUrl)
-        setPrompt(promptText)
-        setRemainingGenerations(response.data.remainingGenerations)
-        setUsedGenerations(totalGenerations - response.data.remainingGenerations)
-        toast.success("Image generated successfully!")
+        setGeneratedImage(response.data.imageUrl);
+        setPrompt(promptText);
+        setRemainingGenerations(response.data.remainingGenerations);
+        setUsedGenerations(
+          totalGenerations - response.data.remainingGenerations
+        );
+        toast.success("Image generated successfully!");
       }
     } catch (error) {
-      console.error("Generation error:", error)
+      console.error("Generation error:", error);
       if (error.response?.status === 429) {
-        toast.error(`This stall has reached the limit of ${totalGenerations} image generations for this competition.`)
+        toast.error(
+          `This stall has reached the limit of ${totalGenerations} image generations for this competition.`
+        );
+      } else if (error.response?.status === 422) {
+        toast.error("Invalid input. Please check your prompt and stall number.");
       } else {
-        toast.error(error.response?.data?.detail || "Failed to generate image. Please try again.")
+        toast.error(
+          error.response?.data?.detail ||
+            "Failed to generate image. Please try again."
+        );
       }
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   return (
     <motion.section
@@ -67,21 +102,27 @@ const ImageGenerationSection = ({ setGeneratedImage, setPrompt, hasGeneratedImag
       className="py-16 px-4"
     >
       <div className="max-w-md mx-auto bg-white bg-opacity-10 backdrop-blur-md rounded-lg shadow-lg p-8">
-        <h2 className="text-3xl font-bold mb-6 text-center">Generate Your AI Image</h2>
+        <h2 className="text-3xl font-bold mb-6 text-center">
+          Generate Your AI Image
+        </h2>
         <div className="mb-4 text-center">
           <p className="text-sm font-medium">
             Remaining Generations: {remainingGenerations} of {totalGenerations}
           </p>
           {usedGenerations > 0 && (
             <p className="text-xs text-gray-400 mt-1">
-              You have used {usedGenerations} generation{usedGenerations !== 1 ? 's' : ''}
+              You have used {usedGenerations} generation
+              {usedGenerations !== 1 ? "s" : ""}
             </p>
           )}
         </div>
         {remainingGenerations > 0 ? (
           <form onSubmit={handleSubmit}>
             <div className="mb-6">
-              <label htmlFor="prompt" className="block text-sm font-medium mb-2">
+              <label
+                htmlFor="prompt"
+                className="block text-sm font-medium mb-2"
+              >
                 Enter your prompt
               </label>
               <textarea
@@ -114,14 +155,14 @@ const ImageGenerationSection = ({ setGeneratedImage, setPrompt, hasGeneratedImag
         ) : (
           <div className="text-center p-4 bg-red-500 bg-opacity-20 rounded-lg">
             <p className="text-lg font-semibold">
-              This stall has reached the limit of {totalGenerations} image generations for this competition.
+              This stall has reached the limit of {totalGenerations} image
+              generations for this competition.
             </p>
           </div>
         )}
       </div>
     </motion.section>
-  )
-}
+  );
+};
 
-export default ImageGenerationSection
-
+export default ImageGenerationSection;

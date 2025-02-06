@@ -1,4 +1,4 @@
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { motion } from "framer-motion"
 import { ToastContainer } from "react-toastify"
 import "react-toastify/dist/ReactToastify.css"
@@ -10,8 +10,18 @@ import ResultSection from "./components/ResultSection"
 
 function App() {
   const [isRegistered, setIsRegistered] = useState(false)
-  const [generatedImage, setGeneratedImage] = useState("")
+  const [generatedImage, setGeneratedImage] = useState(null)
   const [prompt, setPrompt] = useState("")
+  const [stallNo, setStallNo] = useState("")
+
+  useEffect(() => {
+    // Check for stored stallNo on component mount
+    const storedStallNo = localStorage.getItem('stallNo')
+    if (storedStallNo) {
+      setStallNo(storedStallNo)
+      setIsRegistered(true)
+    }
+  }, [])
 
   const handleJoinClick = () => {
     window.location.href = '#registration'
@@ -33,7 +43,10 @@ function App() {
       <HeroSection onJoinClick={handleJoinClick} />
       {!isRegistered && (
         <div id="registration">
-          <RegistrationForm setIsRegistered={handleRegistrationSuccess} />
+          <RegistrationForm 
+            setIsRegistered={setIsRegistered} 
+            onRegister={(registeredStallNo) => setStallNo(registeredStallNo)}
+          />
         </div>
       )}
       {isRegistered && (
@@ -42,7 +55,8 @@ function App() {
             <ImageGenerationSection 
               setGeneratedImage={setGeneratedImage} 
               setPrompt={setPrompt}
-              hasGeneratedImage={!!generatedImage} 
+              hasGeneratedImage={Boolean(generatedImage)}
+              stallNo={stallNo}
             />
           </div>
           {generatedImage && <ResultSection imageUrl={generatedImage} />}

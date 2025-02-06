@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from datetime import datetime
@@ -9,11 +9,9 @@ import io
 import pandas as pd
 import os
 import openai
-import json
 from dotenv import load_dotenv
 from collections import defaultdict
 
-# Load environment variables
 load_dotenv()
 
 app = FastAPI()
@@ -26,10 +24,9 @@ stall_usage = defaultdict(int)
 GENERATION_LIMIT = 3
 
 # Configure CORS
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_URL],
+    allow_origins=["http://localhost:5173"],  # Your React app URL
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -37,177 +34,114 @@ app.add_middleware(
 
 # Google Drive API setup
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
+SERVICE_ACCOUNT_FILE = os.path.join(os.path.dirname(__file__), 'credentials.json')
 
-# Get Google credentials from environment variable
-GOOGLE_CREDENTIALS = os.getenv("GOOGLE_CREDENTIALS")
-if GOOGLE_CREDENTIALS:
-    creds_dict = json.loads(GOOGLE_CREDENTIALS)
-    credentials = service_account.Credentials.from_service_account_info(
-        creds_dict, scopes=SCOPES
-    )
-else:
-    SERVICE_ACCOUNT_FILE = os.path.join(os.path.dirname(__file__), 'credentials.json')
-    try:
-        credentials = service_account.Credentials.from_service_account_file(
-            SERVICE_ACCOUNT_FILE, scopes=SCOPES
-        )
-    except Exception as e:
-        print(f"Error setting up Google Drive credentials: {e}")
+# Near the top of the file with other environment variables
+DRIVE_SHARE_EMAILS = os.getenv("DRIVE_SHARE_EMAILS", "").split(",")
 
 try:
+    credentials = service_account.Credentials.from_service_account_file(
+        SERVICE_ACCOUNT_FILE, scopes=SCOPES
+    )
     drive_service = build('drive', 'v3', credentials=credentials)
 except Exception as e:
-    print(f"Error building drive service: {e}")
+    print(f"Error setting up Google Drive credentials: {e}")
 
 class RegistrationData(BaseModel):
-    name: str
-    email: str
+    projectName: str
     stallNo: str
+
+    class Config:
+        # Add validation
+        json_schema_extra = {
+            "example": {
+                "projectName": "My Project",
+                "stallNo": "A123"
+            }
+        }
 
 class ImagePrompt(BaseModel):
     prompt: str
     stallNo: str
 
-# Function to update Google Drive in the background
-async def update_drive_registration(data: dict):
+    class Config:
+        # Add validation
+        min_length = 1
+        max_length = 1000
+
+# After the file creation/update, add sharing permissions
+def share_file(file_id, email):
     try:
-        new_registration = pd.DataFrame([data])
-        file_name = 'registrations.csv'
-        
-        response = drive_service.files().list(
-            q=f"name='{file_name}'",
-            spaces='drive',
-            fields='files(id, name, webViewLink)'
+        permission = {
+            'type': 'user',
+            'role': 'writer',
+            'emailAddress': email
+        }
+        drive_service.permissions().create(
+            fileId=file_id,
+            body=permission,
+            sendNotificationEmail=False
         ).execute()
-
-        if response['files']:
-            file_id = response['files'][0]['id']
-            try:
-                request = drive_service.files().get_media(fileId=file_id)
-                existing_content = request.execute()
-                existing_df = pd.read_csv(io.StringIO(existing_content.decode('utf-8')))
-                updated_df = pd.concat([existing_df, new_registration], ignore_index=True)
-            except:
-                updated_df = new_registration
-
-            # Save to Drive
-            csv_buffer = io.StringIO()
-            updated_df.to_csv(csv_buffer, index=False)
-            media = MediaIoBaseUpload(
-                io.BytesIO(csv_buffer.getvalue().encode()),
-                mimetype='text/csv',
-                resumable=True
-            )
-
-            drive_service.files().update(
-                fileId=file_id,
-                media_body=media
-            ).execute()
-
-            # Ensure permission exists for the email
-            try:
-                permission = drive_service.permissions().create(
-                    fileId=file_id,
-                    body={
-                        'type': 'user',
-                        'role': 'writer',
-                        'emailAddress': 'ronitkothari22@gmail.com',
-                        'sendNotificationEmail': True
-                    }
-                ).execute()
-                print(f"Permission added/updated: {permission}")
-            except Exception as perm_error:
-                print(f"Permission error: {str(perm_error)}")
-
-            # Get and print the file's web link
-            file_data = drive_service.files().get(
-                fileId=file_id,
-                fields='webViewLink'
-            ).execute()
-            print(f"File can be viewed at: {file_data.get('webViewLink')}")
-
-        else:
-            # Create new file
-            csv_buffer = io.StringIO()
-            new_registration.to_csv(csv_buffer, index=False)
-            
-            file_metadata = {
-                'name': file_name,
-                'mimeType': 'text/csv',
-            }
-            
-            media = MediaIoBaseUpload(
-                io.BytesIO(csv_buffer.getvalue().encode()),
-                mimetype='text/csv',
-                resumable=True
-            )
-            
-            file = drive_service.files().create(
-                body=file_metadata,
-                media_body=media,
-                fields='id, webViewLink'
-            ).execute()
-
-            print(f"New file created with ID: {file['id']}")
-
-            # Add permission for new file
-            permission = drive_service.permissions().create(
-                fileId=file['id'],
-                body={
-                    'type': 'user',
-                    'role': 'writer',
-                    'emailAddress': 'ronitkothari22@gmail.com',
-                    'sendNotificationEmail': True
-                }
-            ).execute()
-
-            print(f"File can be viewed at: {file.get('webViewLink')}")
-
+        print(f"File shared successfully with {email}")
     except Exception as e:
-        print(f"Background task error: {str(e)}")
+        print(f"Error sharing file: {e}")
 
 @app.post("/api/register")
 async def register_user(data: RegistrationData):
-    try:
-        # Prepare registration data
-        registration_data = {
-            'Timestamp': datetime.now().isoformat(),
-            'Name': data.name,
-            'Email': data.email,
-            'Stall_No': data.stallNo
-        }
+    print(f"Received registration data: {data}")
+    
+    # Validate input
+    if not data.projectName.strip():
+        raise HTTPException(
+            status_code=422,
+            detail="Project name cannot be empty"
+        )
+    
+    if not data.stallNo.strip():
+        raise HTTPException(
+            status_code=422,
+            detail="Stall number cannot be empty"
+        )
 
-        file_name = 'registrations.csv'
-        new_registration = pd.DataFrame([registration_data])
-        
-        # First, check if file exists
+    try:
+        # Check if file exists in Google Drive to verify uniqueness
+        file_name = 'Makerfest.csv'
         response = drive_service.files().list(
             q=f"name='{file_name}'",
             spaces='drive',
             fields='files(id, name)'
         ).execute()
 
+        file_id = None
+
         try:
             if response['files']:
                 # File exists, update it
                 file_id = response['files'][0]['id']
-                print(f"\nExisting file found with ID: {file_id}")
                 
-                try:
-                    # Get existing content
-                    request = drive_service.files().get_media(fileId=file_id)
-                    existing_content = request.execute()
-                    existing_df = pd.read_csv(io.StringIO(existing_content.decode('utf-8')))
-                    print("Successfully read existing file")
-                    
-                    # Append new registration
-                    updated_df = pd.concat([existing_df, new_registration], ignore_index=True)
-                except Exception as read_error:
-                    print(f"Error reading existing file: {str(read_error)}")
-                    print("Creating new file with just this registration")
-                    updated_df = new_registration
+                # Get existing content
+                request = drive_service.files().get_media(fileId=file_id)
+                existing_content = request.execute()
+                existing_df = pd.read_csv(io.StringIO(existing_content.decode('utf-8')))
                 
-                # Save updated content
+                # Check for duplicate stall number
+                if not existing_df.empty and data.stallNo in existing_df['Stall_No'].values:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="This stall number is already registered"
+                    )
+                
+                # Create DataFrame with the new registration
+                new_registration = pd.DataFrame([{
+                    'Timestamp': datetime.now().isoformat(),
+                    'Project_Name': data.projectName,
+                    'Stall_No': data.stallNo
+                }])
+                
+                # Append new registration
+                updated_df = pd.concat([existing_df, new_registration], ignore_index=True)
+                
+                # Convert to CSV
                 csv_buffer = io.StringIO()
                 updated_df.to_csv(csv_buffer, index=False)
                 media = MediaIoBaseUpload(
@@ -216,22 +150,33 @@ async def register_user(data: RegistrationData):
                     resumable=True
                 )
                 
-                # Update the file
-                updated_file = drive_service.files().update(
+                # Update file
+                drive_service.files().update(
                     fileId=file_id,
                     media_body=media
                 ).execute()
-                print("File updated successfully")
+                
+                # Share the file with specific email(s)
+                if file_id:
+                    for email in DRIVE_SHARE_EMAILS:
+                        if email.strip():  # Only share if email is not empty
+                            share_file(file_id, email.strip())
+                    
+                    # Get the shareable link
+                    file_data = drive_service.files().get(
+                        fileId=file_id,
+                        fields='webViewLink'
+                    ).execute()
+                    print(f"File shareable link: {file_data.get('webViewLink')}")
 
             else:
-                print("\nNo existing file found. Creating new file.")
                 # Create new file
                 csv_buffer = io.StringIO()
                 new_registration.to_csv(csv_buffer, index=False)
                 
                 file_metadata = {
                     'name': file_name,
-                    'mimeType': 'text/csv'
+                    'mimeType': 'text/csv',
                 }
                 
                 media = MediaIoBaseUpload(
@@ -240,7 +185,6 @@ async def register_user(data: RegistrationData):
                     resumable=True
                 )
                 
-                # Create the file
                 file = drive_service.files().create(
                     body=file_metadata,
                     media_body=media,
@@ -248,43 +192,36 @@ async def register_user(data: RegistrationData):
                 ).execute()
                 
                 file_id = file.get('id')
-                print(f"New file created with ID: {file_id}")
-
-            # Ensure permission exists for the admin email
-            try:
-                permission = drive_service.permissions().create(
-                    fileId=file_id,
-                    body={
-                        'type': 'user',
-                        'role': 'writer',
-                        'emailAddress': 'ronitkothari22@gmail.com'
-                    }
-                ).execute()
-                print("Permission added successfully")
-            except Exception as perm_error:
-                print(f"Permission error: {str(perm_error)}")
-
-            # Get and print the file's web link
-            file_data = drive_service.files().get(
-                fileId=file_id,
-                fields='webViewLink'
-            ).execute()
-            print("\n=== REGISTRATION SPREADSHEET ===")
-            print(f"Admin access link: {file_data.get('webViewLink')}")
-            print("================================\n")
-
-            return {"success": True, "message": "Registration successful"}
 
         except Exception as drive_error:
-            print(f"\nDrive operation error: {str(drive_error)}")
-            raise HTTPException(status_code=500, detail="Error saving registration")
+            print(f"Drive operation error: {str(drive_error)}")
+            raise
 
+        return {"success": True, "message": "Registration saved successfully"}
+
+    except HTTPException as he:
+        raise he
     except Exception as e:
-        print(f"\nError during registration: {str(e)}")
+        print(f"Error during registration: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/generate-image")
 async def generate_image(data: ImagePrompt):
+    print(f"Received request with data: {data}")
+    
+    # Validate input
+    if not data.prompt.strip():
+        raise HTTPException(
+            status_code=422,
+            detail="Prompt cannot be empty"
+        )
+    
+    if not data.stallNo.strip():
+        raise HTTPException(
+            status_code=422,
+            detail="Stall number cannot be empty"
+        )
+
     # Check if stall has reached generation limit
     if stall_usage[data.stallNo] >= GENERATION_LIMIT:
         raise HTTPException(
@@ -293,35 +230,9 @@ async def generate_image(data: ImagePrompt):
         )
     
     try:
-        # First, get the registration details for this stall number
-        file_name = 'registrations.csv'
-        reg_response = drive_service.files().list(
-            q=f"name='{file_name}'",
-            spaces='drive',
-            fields='files(id, name)'
-        ).execute()
-
-        if not reg_response['files']:
-            raise HTTPException(status_code=400, detail="Please register first before generating images")
-
-        file_id = reg_response['files'][0]['id']
-        request = drive_service.files().get_media(fileId=file_id)
-        existing_content = request.execute()
-        df = pd.read_csv(io.StringIO(existing_content.decode('utf-8')))
-        
-        # Find the registration for this stall number
-        stall_registration = df[df['Stall_No'] == data.stallNo]
-        if stall_registration.empty:
-            raise HTTPException(status_code=400, detail="Stall number not found in registrations")
-        
-        # Get the registered name
-        registered_name = stall_registration.iloc[-1]['Name']
-        registered_email = stall_registration.iloc[-1]['Email']
-
-        # Generate image
         response = openai.images.generate(
             model="dall-e-3",
-            prompt=data.prompt,
+            prompt=data.prompt.strip(),
             size="1024x1024",
             quality="standard",
             n=1,
@@ -332,39 +243,45 @@ async def generate_image(data: ImagePrompt):
         # Increment the usage counter for this stall
         stall_usage[data.stallNo] += 1
 
-        # Add new row for this generation with user details
-        new_row = pd.DataFrame([{
-            'Timestamp': datetime.now().isoformat(),
-            'Name': registered_name,
-            'Email': registered_email,
-            'Stall_No': data.stallNo,
-            'Prompt': data.prompt,
-            'Generated_Image_URL': image_url,
-            'Generation_Number': stall_usage[data.stallNo]
-        }])
-        
-        # Append the new row
-        updated_df = pd.concat([df, new_row], ignore_index=True)
-        
-        # Save updated CSV
-        csv_buffer = io.StringIO()
-        updated_df.to_csv(csv_buffer, index=False)
-        media = MediaIoBaseUpload(
-            io.BytesIO(csv_buffer.getvalue().encode()),
-            mimetype='text/csv',
-            resumable=True
-        )
-        
-        drive_service.files().update(
-            fileId=file_id,
-            media_body=media
+        # Update the registration in Google Drive with prompt and image URL
+        file_name = 'Makerfest.csv'
+        response = drive_service.files().list(
+            q=f"name='{file_name}'",
+            spaces='drive',
+            fields='files(id, name)'
         ).execute()
 
-        print(f"\n=== New Image Generation ===")
-        print(f"Stall: {data.stallNo}")
-        print(f"User: {registered_name}")
-        print(f"Generation #{stall_usage[data.stallNo]}")
-        print("==========================\n")
+        if response['files']:
+            file_id = response['files'][0]['id']
+            request = drive_service.files().get_media(fileId=file_id)
+            existing_content = request.execute()
+            df = pd.read_csv(io.StringIO(existing_content.decode('utf-8')))
+            
+            # Add new row for this generation
+            new_row = pd.DataFrame([{
+                'Timestamp': datetime.now().isoformat(),
+                'Stall_No': data.stallNo,
+                'Prompt': data.prompt,
+                'Generated_Image_URL': image_url,
+                'Generation_Number': stall_usage[data.stallNo]
+            }])
+            
+            # Append the new row
+            updated_df = pd.concat([df, new_row], ignore_index=True)
+            
+            # Save updated CSV
+            csv_buffer = io.StringIO()
+            updated_df.to_csv(csv_buffer, index=False)
+            media = MediaIoBaseUpload(
+                io.BytesIO(csv_buffer.getvalue().encode()),
+                mimetype='text/csv',
+                resumable=True
+            )
+            
+            drive_service.files().update(
+                fileId=file_id,
+                media_body=media
+            ).execute()
 
         return {
             "success": True, 
@@ -384,62 +301,6 @@ async def check_limit(stall_no: str):
         "total_generations": GENERATION_LIMIT,
         "used_generations": stall_usage[stall_no]
     }
-
-# Add a new endpoint to get the file link
-@app.get("/api/registration-file")
-async def get_registration_file():
-    try:
-        file_name = 'registrations.csv'
-        response = drive_service.files().list(
-            q=f"name='{file_name}'",
-            spaces='drive',
-            fields='files(id, webViewLink)'
-        ).execute()
-
-        if response['files']:
-            file_id = response['files'][0]['id']
-            file_data = drive_service.files().get(
-                fileId=file_id,
-                fields='webViewLink'
-            ).execute()
-            return {"fileUrl": file_data.get('webViewLink')}
-        else:
-            raise HTTPException(status_code=404, detail="File not found")
-
-    except Exception as e:
-        print(f"Error getting file link: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Admin endpoint to get registration file link in terminal
-@app.get("/admin/get-spreadsheet")
-async def admin_get_spreadsheet():
-    try:
-        file_name = 'registrations.csv'
-        response = drive_service.files().list(
-            q=f"name='{file_name}'",
-            spaces='drive',
-            fields='files(id, webViewLink)'
-        ).execute()
-
-        if response['files']:
-            file_id = response['files'][0]['id']
-            file_data = drive_service.files().get(
-                fileId=file_id,
-                fields='webViewLink'
-            ).execute()
-            print("\n=== ADMIN: REGISTRATION SPREADSHEET ===")
-            print(f"Access link: {file_data.get('webViewLink')}")
-            print("=======================================\n")
-            return {"message": "Spreadsheet link has been printed to the terminal"}
-        else:
-            print("\n=== ADMIN: NO SPREADSHEET FOUND ===")
-            print("No registration spreadsheet exists yet")
-            print("===================================\n")
-            raise HTTPException(status_code=404, detail="File not found")
-
-    except Exception as e:
-        print(f"Error getting file link: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
