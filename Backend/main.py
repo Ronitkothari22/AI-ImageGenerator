@@ -9,24 +9,21 @@ import io
 import pandas as pd
 import os
 import openai
-from dotenv import load_dotenv
 from collections import defaultdict
-
-load_dotenv()
 
 app = FastAPI()
 
-# Configure OpenAI
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Configure OpenAI with environment variable
+openai.api_key = os.environ.get("OPENAI_API_KEY")
 
-# Rate limiting storage - using stall number instead of IP
+# Rate limiting storage
 stall_usage = defaultdict(int)
 GENERATION_LIMIT = 3
 
-# Configure CORS
+# Configure CORS - update to use environment variable
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Your React app URL
+    allow_origins=[os.environ.get("FRONTEND_URL", "http://localhost:5173")],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -34,10 +31,10 @@ app.add_middleware(
 
 # Google Drive API setup
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
-SERVICE_ACCOUNT_FILE = os.path.join(os.path.dirname(__file__), 'credentials.json')
+SERVICE_ACCOUNT_FILE = os.environ.get("GOOGLE_CREDENTIALS")  # Will be set as an environment variable in Render
 
-# Near the top of the file with other environment variables
-DRIVE_SHARE_EMAILS = os.getenv("DRIVE_SHARE_EMAILS", "").split(",")
+# Get Drive share emails from environment
+DRIVE_SHARE_EMAILS = os.environ.get("DRIVE_SHARE_EMAILS", "").split(",")
 
 try:
     credentials = service_account.Credentials.from_service_account_file(
