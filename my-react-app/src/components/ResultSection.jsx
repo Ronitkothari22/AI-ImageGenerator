@@ -1,9 +1,11 @@
 import { motion } from "framer-motion"
 import { FaDownload, FaShareAlt } from "react-icons/fa"
 import { useEffect, useRef } from "react" // Add this import
+import { useNavigate } from 'react-router-dom';
 
 const ResultSection = ({ imageUrl }) => {
   const resultRef = useRef(null) // Add ref for scrolling
+  const navigate = useNavigate();
 
   // Add useEffect for automatic scrolling
   useEffect(() => {
@@ -36,7 +38,11 @@ const ResultSection = ({ imageUrl }) => {
     }
   }
 
-  if (!imageUrl) return null; // Don't render section if no image
+  // Redirect to home if no image
+  if (!imageUrl) {
+    navigate('/');
+    return null;
+  }
 
   return (
     <motion.section
@@ -77,6 +83,15 @@ const ResultSection = ({ imageUrl }) => {
             </motion.button>
           </div>
         </motion.div>
+        
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={() => navigate('/generate')}
+          className="mt-6 w-full py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold rounded-md"
+        >
+          Generate Another Image
+        </motion.button>
       </div>
     </motion.section>
   )

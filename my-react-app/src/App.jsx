@@ -7,12 +7,13 @@ import HeroSection from "./components/HeroSection"
 import RegistrationForm from "./components/RegistrationForm"
 import ImageGenerationSection from "./components/ImageGenerationSection"
 import ResultSection from "./components/ResultSection"
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 
 function App() {
-  const [isRegistered, setIsRegistered] = useState(false)
   const [generatedImage, setGeneratedImage] = useState(null)
   const [prompt, setPrompt] = useState("")
-  const [stallNo, setStallNo] = useState("")
+  const [stallNo, setStallNo] = useState(localStorage.getItem("stallNo") || "")
+  const [isRegistered, setIsRegistered] = useState(!!stallNo)
 
   useEffect(() => {
     // Check for stored stallNo on component mount
@@ -33,37 +34,47 @@ function App() {
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 1 }}
-      className="min-h-screen bg-gradient-to-b from-black to-purple-900 text-white"
-    >
-      <Header />
-      <HeroSection onJoinClick={handleJoinClick} />
-      {!isRegistered && (
-        <div id="registration">
-          <RegistrationForm 
-            setIsRegistered={setIsRegistered} 
-            onRegister={(registeredStallNo) => setStallNo(registeredStallNo)}
-          />
-        </div>
-      )}
-      {isRegistered && (
-        <>
-          <div id="image-generation">
-            <ImageGenerationSection 
-              setGeneratedImage={setGeneratedImage} 
-              setPrompt={setPrompt}
-              hasGeneratedImage={Boolean(generatedImage)}
-              stallNo={stallNo}
-            />
-          </div>
-          {generatedImage && <ResultSection imageUrl={generatedImage} />}
-        </>
-      )}
-      <ToastContainer position="bottom-right" theme="dark" />
-    </motion.div>
+    <Router>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 1 }}
+        className="min-h-screen bg-gradient-to-b from-black to-purple-900 text-white"
+      >
+        <Header />
+        <Routes>
+          <Route path="/" element={
+            <>
+              <HeroSection onJoinClick={() => navigate('/generate')} />
+              {isRegistered && (
+                <ImageGenerationSection
+                  setGeneratedImage={setGeneratedImage}
+                  setPrompt={setPrompt}
+                  hasGeneratedImage={!!generatedImage}
+                  stallNo={stallNo}
+                />
+              )}
+            </>
+          } />
+          <Route path="/result" element={
+            <ResultSection imageUrl={generatedImage} />
+          } />
+          <Route path="/generate" element={
+            isRegistered ? (
+              <ImageGenerationSection
+                setGeneratedImage={setGeneratedImage}
+                setPrompt={setPrompt}
+                hasGeneratedImage={!!generatedImage}
+                stallNo={stallNo}
+              />
+            ) : (
+              <Navigate to="/" />
+            )
+          } />
+        </Routes>
+        <ToastContainer position="bottom-right" theme="dark" />
+      </motion.div>
+    </Router>
   )
 }
 
