@@ -293,6 +293,32 @@ async def generate_image(data: ImagePrompt):
         )
     
     try:
+        # First, get the registration details for this stall number
+        file_name = 'registrations.csv'
+        reg_response = drive_service.files().list(
+            q=f"name='{file_name}'",
+            spaces='drive',
+            fields='files(id, name)'
+        ).execute()
+
+        if not reg_response['files']:
+            raise HTTPException(status_code=400, detail="Please register first before generating images")
+
+        file_id = reg_response['files'][0]['id']
+        request = drive_service.files().get_media(fileId=file_id)
+        existing_content = request.execute()
+        df = pd.read_csv(io.StringIO(existing_content.decode('utf-8')))
+        
+        # Find the registration for this stall number
+        stall_registration = df[df['Stall_No'] == data.stallNo]
+        if stall_registration.empty:
+            raise HTTPException(status_code=400, detail="Stall number not found in registrations")
+        
+        # Get the registered name
+        registered_name = stall_registration.iloc[-1]['Name']
+        registered_email = stall_registration.iloc[-1]['Email']
+
+        # Generate image
         response = openai.images.generate(
             model="dall-e-3",
             prompt=data.prompt,
@@ -306,45 +332,39 @@ async def generate_image(data: ImagePrompt):
         # Increment the usage counter for this stall
         stall_usage[data.stallNo] += 1
 
-        # Update the registration in Google Drive with prompt and image URL
-        file_name = 'registrations.csv'
-        response = drive_service.files().list(
-            q=f"name='{file_name}'",
-            spaces='drive',
-            fields='files(id, name)'
+        # Add new row for this generation with user details
+        new_row = pd.DataFrame([{
+            'Timestamp': datetime.now().isoformat(),
+            'Name': registered_name,
+            'Email': registered_email,
+            'Stall_No': data.stallNo,
+            'Prompt': data.prompt,
+            'Generated_Image_URL': image_url,
+            'Generation_Number': stall_usage[data.stallNo]
+        }])
+        
+        # Append the new row
+        updated_df = pd.concat([df, new_row], ignore_index=True)
+        
+        # Save updated CSV
+        csv_buffer = io.StringIO()
+        updated_df.to_csv(csv_buffer, index=False)
+        media = MediaIoBaseUpload(
+            io.BytesIO(csv_buffer.getvalue().encode()),
+            mimetype='text/csv',
+            resumable=True
+        )
+        
+        drive_service.files().update(
+            fileId=file_id,
+            media_body=media
         ).execute()
 
-        if response['files']:
-            file_id = response['files'][0]['id']
-            request = drive_service.files().get_media(fileId=file_id)
-            existing_content = request.execute()
-            df = pd.read_csv(io.StringIO(existing_content.decode('utf-8')))
-            
-            # Add new row for this generation
-            new_row = pd.DataFrame([{
-                'Timestamp': datetime.now().isoformat(),
-                'Stall_No': data.stallNo,
-                'Prompt': data.prompt,
-                'Generated_Image_URL': image_url,
-                'Generation_Number': stall_usage[data.stallNo]
-            }])
-            
-            # Append the new row
-            updated_df = pd.concat([df, new_row], ignore_index=True)
-            
-            # Save updated CSV
-            csv_buffer = io.StringIO()
-            updated_df.to_csv(csv_buffer, index=False)
-            media = MediaIoBaseUpload(
-                io.BytesIO(csv_buffer.getvalue().encode()),
-                mimetype='text/csv',
-                resumable=True
-            )
-            
-            drive_service.files().update(
-                fileId=file_id,
-                media_body=media
-            ).execute()
+        print(f"\n=== New Image Generation ===")
+        print(f"Stall: {data.stallNo}")
+        print(f"User: {registered_name}")
+        print(f"Generation #{stall_usage[data.stallNo]}")
+        print("==========================\n")
 
         return {
             "success": True, 
