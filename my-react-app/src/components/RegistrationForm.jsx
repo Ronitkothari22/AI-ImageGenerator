@@ -3,6 +3,8 @@ import { motion } from "framer-motion"
 import axios from "axios"
 import { toast } from "react-toastify"
 
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000"
+
 const RegistrationForm = ({ setIsRegistered }) => {
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
@@ -14,18 +16,15 @@ const RegistrationForm = ({ setIsRegistered }) => {
     setIsSubmitting(true)
     
     try {
-      const response = await axios.post("http://localhost:8000/api/register", {
+      const response = await axios.post(`${API_URL}/api/register`, {
         name,
         email,
         stallNo
       })
 
       if (response.data.success) {
-        toast.success("Registration successful!")
-        // Small delay before redirecting to ensure toast is visible
-        setTimeout(() => {
-          setIsRegistered(true)
-        }, 1500)
+        toast.success("Registration successful! Redirecting to image generation...")
+        setIsRegistered(true)  // Redirect immediately
       }
     } catch (error) {
       console.error("Registration error:", error)
