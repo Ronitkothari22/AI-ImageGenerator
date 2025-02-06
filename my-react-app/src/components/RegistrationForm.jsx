@@ -1,84 +1,94 @@
-import { useState } from "react"
-import { motion } from "framer-motion"
-import axios from "axios"
-import { toast } from "react-toastify"
+import { useState } from "react";
+import { motion } from "framer-motion";
+import axios from "axios";
+import { toast } from "react-toastify";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000"
+const API_URL =
+  import.meta.env.VITE_API_URL || "https://makerfest-backend.onrender.com";
 
 const RegistrationForm = ({ setIsRegistered, onRegister }) => {
-  const [projectName, setProjectName] = useState("")
-  const [stallNo, setStallNo] = useState("")
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [projectName, setProjectName] = useState("");
+  const [stallNo, setStallNo] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState({
-    stallNo: ''
-  })
+    stallNo: "",
+  });
 
   const validateForm = () => {
-    let isValid = true
+    let isValid = true;
     const newErrors = {
-      stallNo: ''
-    }
+      stallNo: "",
+    };
 
     // Validate stall number
     if (!stallNo.trim()) {
-      newErrors.stallNo = 'Stall number is required'
-      isValid = false
+      newErrors.stallNo = "Stall number is required";
+      isValid = false;
     }
 
     // Validate project name
     if (!projectName.trim()) {
-      toast.error("Project name is required")
-      isValid = false
+      toast.error("Project name is required");
+      isValid = false;
     }
 
-    setErrors(newErrors)
-    return isValid
-  }
+    setErrors(newErrors);
+    return isValid;
+  };
 
   const handleSubmit = async (e) => {
-    e.preventDefault()
-    
+    e.preventDefault();
+
     if (!validateForm()) {
-      return
+      return;
     }
 
-    setIsSubmitting(true)
-    
+    setIsSubmitting(true);
+
     try {
-      const response = await axios.post(`${API_URL}/api/register`, {
-        projectName: projectName.trim(),
-        stallNo: stallNo.trim()
-      }, {
-        headers: {
-          'Content-Type': 'application/json'
+      const response = await axios.post(
+        `${API_URL}/api/register`,
+        {
+          projectName: projectName.trim(),
+          stallNo: stallNo.trim(),
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
         }
-      })
+      );
 
       if (response.data.success) {
-        localStorage.setItem('stallNo', stallNo.trim())
-        onRegister(stallNo.trim())
-        console.log("Registration successful with stall number:", stallNo)
-        toast.success("Registration successful! Redirecting to image generation...")
-        setIsRegistered(true)
+        localStorage.setItem("stallNo", stallNo.trim());
+        onRegister(stallNo.trim());
+        console.log("Registration successful with stall number:", stallNo);
+        toast.success(
+          "Registration successful! Redirecting to image generation..."
+        );
+        setIsRegistered(true);
       }
     } catch (error) {
-      console.error("Registration error:", error)
+      console.error("Registration error:", error);
       if (error.response?.status === 400) {
         if (error.response.data.detail.includes("stall")) {
-          setErrors(prev => ({ ...prev, stallNo: error.response.data.detail }))
-          toast.error("This stall number is already registered")
+          setErrors((prev) => ({
+            ...prev,
+            stallNo: error.response.data.detail,
+          }));
+          toast.error("This stall number is already registered");
         } else {
-          toast.error(error.response.data.detail)
+          toast.error(error.response.data.detail);
         }
       } else if (error.response?.status === 422) {
-        toast.error("Please fill in all required fields correctly")
+        toast.error("Please fill in all required fields correctly");
       } else {
-        toast.error("Registration failed. Please try again.")
+        toast.error("Registration failed. Please try again.");
       }
     } finally {
-      setIsSubmitting(false)
+      setIsSubmitting(false);
     }
-  }
+  };
 
   return (
     <motion.section
@@ -88,10 +98,15 @@ const RegistrationForm = ({ setIsRegistered, onRegister }) => {
       className="py-16 px-4"
     >
       <div className="max-w-md mx-auto bg-white bg-opacity-10 backdrop-blur-md rounded-lg shadow-lg p-8">
-        <h2 className="text-3xl font-bold mb-6 text-center">Register for the Competition</h2>
+        <h2 className="text-3xl font-bold mb-6 text-center">
+          Register for the Competition
+        </h2>
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
-            <label htmlFor="projectName" className="block text-sm font-medium mb-2">
+            <label
+              htmlFor="projectName"
+              className="block text-sm font-medium mb-2"
+            >
               Project Name
             </label>
             <input
@@ -114,11 +129,11 @@ const RegistrationForm = ({ setIsRegistered, onRegister }) => {
               id="stallNo"
               value={stallNo}
               onChange={(e) => {
-                setStallNo(e.target.value)
-                setErrors(prev => ({ ...prev, stallNo: '' }))
+                setStallNo(e.target.value);
+                setErrors((prev) => ({ ...prev, stallNo: "" }));
               }}
               className={`w-full px-3 py-2 bg-gray-800 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 ${
-                errors.stallNo ? 'border-red-500 border-2' : ''
+                errors.stallNo ? "border-red-500 border-2" : ""
               }`}
               required
               disabled={isSubmitting}
@@ -144,16 +159,16 @@ const RegistrationForm = ({ setIsRegistered, onRegister }) => {
               "Register"
             )}
           </motion.button>
-          
+
           {/* Loading Note */}
           <p className="text-sm text-gray-300 text-center italic">
-            Note: Registration may take a few seconds to complete. Please be patient.
+            Note: Registration may take a few seconds to complete. Please be
+            patient.
           </p>
         </form>
       </div>
     </motion.section>
-  )
-}
+  );
+};
 
-export default RegistrationForm
-
+export default RegistrationForm;

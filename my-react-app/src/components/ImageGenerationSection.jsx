@@ -3,7 +3,8 @@ import { motion } from "framer-motion";
 import axios from "axios";
 import { toast } from "react-toastify";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000"
+const API_URL =
+  import.meta.env.VITE_API_URL || "https://makerfest-backend.onrender.com";
 
 const ImageGenerationSection = ({
   setGeneratedImage,
@@ -41,14 +42,14 @@ const ImageGenerationSection = ({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     console.log("Form submission details:", {
       promptText: promptText,
       promptTextTrimmed: promptText.trim(),
       stallNo: stallNo,
       stallNoTrimmed: stallNo?.trim(),
       hasStallNo: Boolean(stallNo),
-      hasPrompt: Boolean(promptText)
+      hasPrompt: Boolean(promptText),
     });
 
     if (!promptText.trim() || !stallNo) {
@@ -58,14 +59,11 @@ const ImageGenerationSection = ({
 
     setIsLoading(true);
     try {
-      const response = await axios.post(
-        `${API_URL}/generate-image`,
-        {
-          prompt: promptText.trim(),
-          stallNo: stallNo.trim()
-        }
-      );
-      
+      const response = await axios.post(`${API_URL}/generate-image`, {
+        prompt: promptText.trim(),
+        stallNo: stallNo.trim(),
+      });
+
       if (response.data.success) {
         setGeneratedImage(response.data.imageUrl);
         setPrompt(promptText);
@@ -82,7 +80,9 @@ const ImageGenerationSection = ({
           `This stall has reached the limit of ${totalGenerations} image generations for this competition.`
         );
       } else if (error.response?.status === 422) {
-        toast.error("Invalid input. Please check your prompt and stall number.");
+        toast.error(
+          "Invalid input. Please check your prompt and stall number."
+        );
       } else {
         toast.error(
           error.response?.data?.detail ||
@@ -153,7 +153,8 @@ const ImageGenerationSection = ({
             </motion.button>
 
             <p className="text-sm text-gray-300 text-center italic">
-              Note: Image generation may take up to 30 seconds. Please wait while we create your unique image.
+              Note: Image generation may take up to 30 seconds. Please wait
+              while we create your unique image.
             </p>
           </form>
         ) : (
